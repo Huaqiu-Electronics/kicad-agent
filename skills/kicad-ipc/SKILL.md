@@ -1,11 +1,34 @@
 ---
-name: kicad-ipc-pcb
+name: kicad-ipc
 description: "通过 KiCad IPC API 和官方 kicad-python 在打开的 PCB 中检查、新建、修改或删除对象；适用于 PCB 自动化、外部布线结果导入和插件开发，不用于直接编辑 .kicad_pcb 文件。"
 ---
 
 # KiCad IPC PCB
 
 使用 KiCad 的 IPC API 与 `kicad-python` 作为 PCB 读写的默认且优先接口。目标是让 KiCad 自己维护对象、UUID、连通性、撤销历史和磁盘保存；不要把 `.kicad_pcb` 当作可直接改写的中间格式。
+
+## 本技能与工具的配合
+
+安装 `@huaqiu/dsh-kicad` 后，本技能与下面这些工具一起可用，无需单独安装技能。
+
+工具是**可执行接口**：它们负责连接 KiCad、传参、提交事务并把 KiCad 的返回原样带回来。本技能是**操作准则**：什么时候该用、先读什么、如何验证、什么时候必须停下来问用户。
+
+| 工具 | 作用 |
+| --- | --- |
+| `kicad_ipc_diagnose` | 只读：检查连接、API 版本和当前 PCB。任何 KiCad 操作前先跑它。 |
+| `kicad_ipc_verify_live` | 在一个被 drop 的事务里跑完整 CRUD 冒烟测试，不落盘。 |
+| `kicad_pcb_create_track` / `create_via` / `create_copper_zone` | 在**已存在的网络**上新建走线、过孔、未填充铜区。 |
+| `kicad_pcb_add_footprint_from_template` | 克隆板上已有封装作为模板，新增一个封装。 |
+| `kicad_pcb_move_rotate_footprint` | 按 reference 移动/旋转一个封装。 |
+| `kicad_pcb_update_selected_track_width` | 改当前选中走线的线宽。 |
+| `kicad_pcb_refill_zones` | 等待铺铜填充完成。 |
+| `kicad_pcb_remove_selected_items` | 删除当前选中对象（必须显式 `confirm`）。 |
+
+工具的返回信封统一为 `{ ok, script, effect, output }` 或 `{ ok, error: { kind, message } }`。`effect` 说明该操作对板子做了什么：`read` 只读、`probe` 改了但事务被丢弃、`mutate` 已提交。
+
+**工具返回 `ok: true` 不等于改动已达成用户意图。** 每次重要改动后仍要重新读取受影响的状态确认（见下文的“读取 → 校验 → 变更 → 验证 → 保存”）。
+
+需要工具没覆盖的操作时，读取并复制 [scripts/](scripts/) 内的模板改参数运行；本目录下的脚本就是这些工具的实现。
 
 ## 基本边界
 
